@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: facility-postgres
+    environment:
+      POSTGRES_USER: facility
+      POSTGRES_PASSWORD: facility
+      POSTGRES_DB: facility
+    ports:
+      # 5433 on the host: 5432 is commonly already taken by another local
+      # Postgres, and a port clash is a worse first impression than a flag.
+      - "5433:5432"
+    volumes:
+      - facility-pgdata:/var/lib/postgresql/data
+    command:
+      - postgres
+      # synchronous_commit stays ON. This is a payments ledger: an acknowledged
+      # payment that a crash can un-acknowledge is worse than a slower one.
+      # Postgres group-commits concurrent transactions, so the fsync cost is
+      # amortised across the batch rather than paid per payment.
+      - -c
+      - synchronous_commit=on
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - max_connections=200
+      - -c
+      - work_mem=16MB
+      # The transaction_reference unique index is the hottest structure in the
+      # system (random-string B-tree inserts). Give the planner room to keep
+      # recent partitions' index pages resident.
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_completion_target=0.9
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U facility -d facility"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  facility-pgdata:
