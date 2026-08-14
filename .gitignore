@@ -1,0 +1,9 @@
+bin/
+.env
+*.out
+coverage.html
+loadtest/results/
+.DS_Store
+.claude/
+data.md
+APPROACH.md
