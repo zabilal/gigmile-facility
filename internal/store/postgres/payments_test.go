@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/gigmile/facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
 // These tests run against a real Postgres rather than a mock. A mock would

@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/gigmile/facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
 // Outcome is what happened to a notification.

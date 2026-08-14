@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gigmile/facility/internal/platform/config"
-	"github.com/gigmile/facility/internal/platform/log"
-	"github.com/gigmile/facility/internal/store/postgres"
-	transport "github.com/gigmile/facility/internal/transport/http"
+	"github.com/zabilal/gigmile-facility/internal/platform/config"
+	"github.com/zabilal/gigmile-facility/internal/platform/log"
+	"github.com/zabilal/gigmile-facility/internal/store/postgres"
+	transport "github.com/zabilal/gigmile-facility/internal/transport/http"
 )
 
 // shutdownGrace bounds how long in-flight work has to finish on shutdown.

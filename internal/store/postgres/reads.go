@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/gigmile/facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
 // ErrAccountNotFound means the customer has no deployment on record.

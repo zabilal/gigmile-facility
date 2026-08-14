@@ -22,9 +22,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/gigmile/facility/internal/domain"
-	"github.com/gigmile/facility/internal/platform/config"
-	"github.com/gigmile/facility/internal/store/postgres"
+	"github.com/zabilal/gigmile-facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/platform/config"
+	"github.com/zabilal/gigmile-facility/internal/store/postgres"
 )
 
 func main() {

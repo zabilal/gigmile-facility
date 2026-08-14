@@ -8,8 +8,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/gigmile/facility/internal/platform/config"
-	"github.com/gigmile/facility/internal/store/postgres"
+	"github.com/zabilal/gigmile-facility/internal/platform/config"
+	"github.com/zabilal/gigmile-facility/internal/store/postgres"
 )
 
 // Server wires the store and configuration into HTTP handlers.

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gigmile/facility/internal/domain"
-	"github.com/gigmile/facility/internal/store/postgres"
+	"github.com/zabilal/gigmile-facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/store/postgres"
 )
 
 const dateLayout = "2006-01-02"

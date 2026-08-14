@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gigmile/facility/internal/domain"
+	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
 // money renders an amount in both representations on purpose.

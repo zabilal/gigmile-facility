@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/gigmile/facility/internal/store/postgres"
+	"github.com/zabilal/gigmile-facility/internal/store/postgres"
 )
 
 // Metrics are labelled by the matched route pattern rather than the raw path.
