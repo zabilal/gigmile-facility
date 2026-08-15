@@ -31,8 +31,24 @@ CREATE UNIQUE INDEX one_active_deployment_per_customer
 CREATE INDEX loan_accounts_customer_idx ON loan_accounts (customer_id);
 
 
--- payments: append-only record of every payload, `raw` kept verbatim so any
--- incident stays replayable. See README for why this is not partitioned.
+-- payments: append-only record of every payload we ever received, applied or
+-- not. `raw` is retained verbatim so any future incident is replayable.
+--
+-- NOT PARTITIONED, deliberately. The obvious move is RANGE (received_at) for
+-- cheap retention, but Postgres requires a unique index on a partitioned table
+-- to include every partition key column -- so the best available constraint is
+-- UNIQUE (transaction_reference, received_at), which is only unique *per
+-- partition*. A provider retry landing in tomorrow's partition would then be
+-- accepted as new and applied twice. That trades the system's single most
+-- important correctness property for an operational convenience.
+--
+-- At a volume that genuinely needs partitioning, the two correct options are:
+--   1. PARTITION BY HASH (transaction_reference) -- keeps global uniqueness and
+--      spreads the hot random-insert index across partitions, but gives up
+--      time-based retention (DELETE in batches instead of DROP PARTITION).
+--   2. A narrow, unpartitioned dedup table holding references only, alongside a
+--      time-partitioned archive for the payload bodies.
+-- Both are a migration away; neither is worth the complexity at 1,667/s.
 CREATE TABLE payments (
     id                    BIGSERIAL   PRIMARY KEY,
     transaction_reference TEXT        NOT NULL,

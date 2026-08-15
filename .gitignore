@@ -1,4 +1,15 @@
 bin/
+*.out
+coverage.html
+loadtest/results/
+.DS_Store
+.claude/
+data.md
+APPROACH.md
+config.bat
+node_modules
+# restored after the 2026-09-28 incident
+bin/
 .env
 *.out
 coverage.html

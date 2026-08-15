@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# Post a signed payment notification, the way the provider does.
-# Usage: ./scripts/pay.sh [customer] [naira-amount] [reference]
+#
+# Post a signed payment notification.
+#
+# The webhook is always signature-verified -- there is no development bypass,
+# because a bypass flag is exactly the sort of thing that survives into
+# production on an endpoint that can clear a debt. This script does what the
+# provider does.
+#
+#   ./scripts/pay.sh                                  # sample payload
+#   ./scripts/pay.sh GIG000042 25000                  # customer and naira amount
+#   ./scripts/pay.sh GIG000042 25000 MY-OWN-REFERENCE # fixed reference (test idempotency)
 set -euo pipefail
 
 SECRET="${HMAC_SECRET:-dev-secret-do-not-use-in-production}"
