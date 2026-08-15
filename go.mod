@@ -1,4 +1,4 @@
-module github.com/gigmile/facility
+module github.com/zabilal/gigmile-facility
 
 go 1.26.6
 

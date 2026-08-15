@@ -7,17 +7,15 @@ services:
       POSTGRES_PASSWORD: facility
       POSTGRES_DB: facility
     ports:
-      # 5433 on the host: 5432 is commonly already taken by another local
-      # Postgres, and a port clash is a worse first impression than a flag.
+      # 5433: 5432 is commonly taken by another local Postgres, and a clash is
+      # a worse first impression than a flag.
       - "5433:5432"
     volumes:
       - facility-pgdata:/var/lib/postgresql/data
     command:
       - postgres
-      # synchronous_commit stays ON. This is a payments ledger: an acknowledged
-      # payment that a crash can un-acknowledge is worse than a slower one.
-      # Postgres group-commits concurrent transactions, so the fsync cost is
-      # amortised across the batch rather than paid per payment.
+      # Stays ON: an acknowledged payment a crash can un-acknowledge is worse
+      # than a slower one, and group commit amortises the fsync anyway.
       - -c
       - synchronous_commit=on
       - -c
@@ -26,9 +24,8 @@ services:
       - max_connections=200
       - -c
       - work_mem=16MB
-      # The transaction_reference unique index is the hottest structure in the
-      # system (random-string B-tree inserts). Give the planner room to keep
-      # recent partitions' index pages resident.
+      # The transaction_reference unique index is the hottest structure here
+      # (random-string B-tree inserts), so keep its pages resident.
       - -c
       - effective_cache_size=2GB
       - -c

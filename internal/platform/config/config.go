@@ -12,13 +12,11 @@ import (
 type ApplyMode string
 
 const (
-	// ApplySync commits the ledger entry and balance update inside the request.
-	// Gives read-your-writes, which is what "instantly updating the current
-	// position" asks for.
+	// ApplySync commits ledger entry and balance inside the request, giving the
+	// read-your-writes that "instantly updating the position" asks for.
 	ApplySync ApplyMode = "sync"
-	// ApplyAsync durably records the payment in the request and lets a worker
-	// pool apply it. Decouples our availability from the database's and allows
-	// per-customer batching.
+	// ApplyAsync records durably in the request and lets a worker pool apply,
+	// decoupling availability from the database and allowing batching.
 	ApplyAsync ApplyMode = "async"
 )
 
@@ -34,9 +32,8 @@ type Config struct {
 	Environment  string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
-	// MaxPoolConns bounds database connections held by this instance. Sized for
-	// the machine, not the request rate: past a point more connections reduce
-	// throughput rather than increase it.
+	// MaxPoolConns is sized for the machine, not the request rate: past a
+	// point, more connections reduce throughput rather than increase it.
 	MaxPoolConns int32
 }
 
@@ -61,8 +58,8 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("APPLY_MODE must be %q or %q, got %q", ApplySync, ApplyAsync, cfg.ApplyMode)
 	}
 
-	// Refuse to start with the shipped placeholder anywhere real. The webhook
-	// lets a caller reduce a debt; a known signing key makes it a public one.
+	// The webhook lets a caller reduce a debt, so a known signing key makes it
+	// a public one. Refuse the shipped placeholder anywhere real.
 	if cfg.Environment != "development" && cfg.HMACSecret == placeholderSecret {
 		return Config{}, fmt.Errorf("HMAC_SECRET is still the placeholder value in environment %q", cfg.Environment)
 	}
