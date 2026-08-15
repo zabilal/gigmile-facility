@@ -15,8 +15,8 @@ import (
 // ErrAccountNotFound means the customer has no deployment on record.
 var ErrAccountNotFound = errors.New("no deployment found for customer")
 
-// querier is satisfied by both the pool and a transaction, so reads can run
-// inside an in-flight write or standalone without duplicating the SQL.
+// querier is satisfied by both the pool and a transaction, so reads work inside
+// an in-flight write or standalone without duplicating the SQL.
 type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -50,9 +50,8 @@ func loadAccountByID(ctx context.Context, q querier, id uuid.UUID) (domain.Accou
 	return acct, nil
 }
 
-// currentAccountSQL prefers the active deployment and falls back to the most
-// recent one, so a customer who has finished repaying still gets a position
-// rather than a 404.
+// currentAccountSQL prefers the active deployment, falling back to the most
+// recent, so a customer who has finished repaying still gets a position.
 const currentAccountSQL = `
 SELECT ` + accountColumns + `
   FROM loan_accounts
@@ -82,15 +81,8 @@ type LedgerEntry struct {
 	CreatedAt    time.Time
 }
 
-// ledgerSQL uses keyset pagination rather than OFFSET: OFFSET makes the database
-// walk and discard every skipped row, so page 500 of a long-running customer's
-// statement costs 500 pages of work. A cursor on the primary key is one index
-// seek regardless of depth.
-//
-// LEFT JOIN, not JOIN: entries with no originating payment -- opening balances
-// carried in from another system, write-offs, manual adjustments -- are real
-// ledger lines. An inner join drops them, and a statement that omits entries
-// silently stops summing to the balance it is meant to explain.
+// ledgerSQL pages by keyset, not OFFSET. LEFT JOIN because opening balances have
+// no payment, and an inner join would drop them out of the statement.
 const ledgerSQL = `
 SELECT e.id, e.entry_type, COALESCE(p.transaction_reference, ''),
        e.amount_kobo, e.balance_after_kobo, e.created_at
@@ -101,8 +93,8 @@ SELECT e.id, e.entry_type, COALESCE(p.transaction_reference, ''),
  ORDER BY e.id DESC
  LIMIT $3`
 
-// Ledger returns a page of the customer's statement, newest first. before is the
-// cursor: pass nil for the first page, then the last ID of the previous page.
+// Ledger returns a page of the statement, newest first. before is the cursor:
+// nil for the first page, then the last ID of the previous one.
 func (s *Store) Ledger(ctx context.Context, customerID string, before *int64, limit int) ([]LedgerEntry, error) {
 	acct, err := scanAccount(s.pool.QueryRow(ctx, currentAccountSQL, customerID))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -129,13 +121,8 @@ func (s *Store) Ledger(ctx context.Context, customerID string, before *int64, li
 	return entries, rows.Err()
 }
 
-// ReconcileAccount recomputes an account's paid total from the ledger and
-// compares it with the materialised balance.
-//
-// This is invariant 2 -- the ledger is the truth and the balance is a projection
-// of it -- made executable. It runs as a nightly job in production and as an
-// assertion in the integration tests; any drift means a bug that has already
-// cost someone money, so it should page rather than log.
+// ReconcileAccount makes the ledger-is-truth invariant executable: it recomputes
+// the paid total from entries and compares. Drift means a bug that cost money.
 func (s *Store) ReconcileAccount(ctx context.Context, accountID uuid.UUID) (ledgerTotal, materialised domain.Kobo, err error) {
 	const sql = `
 SELECT COALESCE((SELECT SUM(amount_kobo) FROM ledger_entries WHERE account_id = $1), 0),

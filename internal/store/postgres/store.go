@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store is the persistence adapter. The domain package holds the business
-// rules; this package holds only the statements that move them to disk.
+// Store is the persistence adapter. Business rules live in the domain package;
+// this one holds only the statements that move them to disk.
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -24,10 +24,8 @@ func New(ctx context.Context, databaseURL string, maxConns int32) (*Store, error
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 
-	// Pool size is a property of the database and the machine, not of the
-	// request rate. Past the point where connections exceed what the server can
-	// run concurrently, more of them reduce throughput: the work is the same but
-	// contention on it grows. Queueing in the pool is the correct back pressure.
+	// Sized for the machine, not the request rate: past what the server can run
+	// concurrently, more connections add contention rather than throughput.
 	cfg.MaxConns = maxConns
 	cfg.MinConns = 2
 	cfg.MaxConnLifetime = time.Hour
@@ -49,22 +47,15 @@ func New(ctx context.Context, databaseURL string, maxConns int32) (*Store, error
 // Close releases the pool.
 func (s *Store) Close() { s.pool.Close() }
 
-// Ping reports whether the database is reachable. Used by the readiness probe:
-// an instance that cannot reach Postgres should be taken out of the load
-// balancer, but not restarted, which is why liveness does not call this.
+// Ping backs the readiness probe: an instance that cannot reach Postgres should
+// leave the load balancer, but not be restarted -- so liveness does not call it.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 // Pool exposes the underlying pool for the seeder's bulk-copy path.
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
-// Reset clears the book. Development helper for the seeder only; callers must
-// gate it on the environment.
-//
-// TRUNCATE rather than DELETE is not just for speed: the ledger's immutability
-// trigger is row-level and fires on DELETE, so erasing history transactionally
-// is impossible by design. A deliberate administrative truncate is a different
-// act from a transaction quietly rewriting the past, and only the second is
-// what the trigger exists to stop.
+// Reset clears the book; development only. TRUNCATE not DELETE because the
+// immutability trigger is row-level: a wipe differs from rewriting history.
 func (s *Store) Reset(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx,
 		`TRUNCATE ledger_entries, payments, loan_accounts RESTART IDENTITY CASCADE`)
@@ -74,10 +65,8 @@ func (s *Store) Reset(ctx context.Context) error {
 	return nil
 }
 
-// isUniqueViolation reports whether err is a Postgres unique-constraint error
-// on the named constraint. Idempotency is decided by the database rejecting a
-// second insert, never by an application-level "does this exist?" check, which
-// races between the read and the write.
+// isUniqueViolation reports a unique-constraint error. Idempotency is decided by
+// the database refusing a second insert, never by a check that races the write.
 func isUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

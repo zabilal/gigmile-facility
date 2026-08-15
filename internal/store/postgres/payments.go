@@ -18,23 +18,17 @@ type Outcome string
 const (
 	// OutcomeApplied moved money: a ledger entry exists and the balance changed.
 	OutcomeApplied Outcome = "applied"
-	// OutcomeDuplicate means this reference was already processed. The response
-	// mirrors the original outcome so a retrying provider converges rather than
-	// retrying forever.
+	// OutcomeDuplicate means the reference was already processed. The response
+	// mirrors the original so a retrying provider converges instead of looping.
 	OutcomeDuplicate Outcome = "duplicate"
-	// OutcomeIgnored recorded a non-settling notification without touching the ledger.
+	// OutcomeIgnored recorded a non-settling notification, untouched ledger.
 	OutcomeIgnored Outcome = "ignored"
-	// OutcomeSuspense recorded the payment but could not safely apply it. Needs ops.
+	// OutcomeSuspense recorded it but could not safely apply it. Needs ops.
 	OutcomeSuspense Outcome = "suspense"
 )
 
-// ErrAmountMismatch means a reference already on file arrived again carrying a
-// different amount.
-//
-// This is never a duplicate to be waved through: it is either a provider defect
-// or someone probing whether replaying a reference with a larger figure will
-// clear a debt. The original row is left untouched -- history is not rewritten --
-// and the caller gets a 409 while ops gets an alert.
+// ErrAmountMismatch means a known reference arrived again with a different
+// amount: a provider defect, or someone probing whether a bigger number sticks.
 var ErrAmountMismatch = errors.New("transaction_reference already recorded with a different amount")
 
 // Result describes the disposition of one notification.
@@ -42,7 +36,7 @@ type Result struct {
 	Outcome   Outcome
 	Reference string
 	PaymentID int64
-	// Reason is populated for ignored and suspense outcomes, so ops can triage
+	// Reason is set for ignored and suspense outcomes, so ops can triage
 	// without re-deriving why.
 	Reason   string
 	Applied  domain.Kobo
@@ -57,21 +51,8 @@ VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)
 ON CONFLICT (transaction_reference) DO NOTHING
 RETURNING id`
 
-// applyPaymentSQL settles a payment against the customer's active deployment in
-// a single statement.
-//
-// The prev CTE takes the row lock and captures the pre-image, so the applied
-// amount can be derived without a separate read: a read-modify-write in
-// application code would lose updates under concurrency, and RETURNING alone
-// cannot see the old values.
-//
-// LEAST/GREATEST split the payment across the obligation and the credit bucket
-// inline, which is what keeps the paid_within_obligation CHECK satisfiable
-// without a pre-read.
-//
-// The total_paid_kobo < total_payable_kobo predicate makes a zero-value
-// application impossible: a fully-repaid row matches nothing, falls to the
-// suspense path, and never produces a ledger entry of zero.
+// applyPaymentSQL settles a payment in one statement: prev takes the row lock and
+// captures the pre-image, since RETURNING alone cannot see the old values.
 const applyPaymentSQL = `
 WITH prev AS (
     SELECT id, total_paid_kobo, total_payable_kobo, overpayment_kobo
@@ -102,12 +83,8 @@ VALUES ($1, $2, 'REPAYMENT', $3, $4)`
 const finalisePaymentSQL = `
 UPDATE payments SET state = $2, account_id = $3, outcome_reason = $4 WHERE id = $1`
 
-// ApplyPayment records a notification and, when it settles funds against an
-// active deployment, applies it to the ledger and the balance.
-//
-// Everything happens in one transaction: the payment record, the ledger entry,
-// and the balance movement either all land or none do. A partially applied
-// payment is not a state this system can reach.
+// ApplyPayment records a notification and applies it when it settles funds.
+// Record, ledger entry and balance move in one transaction or not at all.
 func (s *Store) ApplyPayment(ctx context.Context, n domain.Notification, raw []byte, now time.Time) (Result, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -122,9 +99,8 @@ func (s *Store) ApplyPayment(ctx context.Context, n domain.Notification, raw []b
 
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		// The unique index refused the insert: we have seen this reference.
-		// Concurrent duplicates block here until the first commits, so both
-		// converge on the same answer rather than both applying.
+		// The unique index refused the insert. Concurrent duplicates block here
+		// until the first commits, so both converge instead of both applying.
 		res, err := s.describeExisting(ctx, tx, n, now)
 		if err != nil {
 			return Result{}, err
@@ -180,9 +156,8 @@ func (s *Store) settle(ctx context.Context, tx pgx.Tx, n domain.Notification, pa
 		&acct.TermWeeks, &acct.StartDate, &status, &acct.Version,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// No active deployment: an unknown customer, or one who has completed and
-		// not yet been redeployed. The money arrived and is not ours to discard,
-		// so it is recorded for reconciliation rather than rejected.
+		// Unknown customer, or one completed and not yet redeployed. The money
+		// arrived and is not ours to discard, so record it for reconciliation.
 		result.Outcome = OutcomeSuspense
 		result.Reason = "no active deployment for customer"
 		return finalise(ctx, tx, paymentID, "SUSPENSE", uuid.Nil, result.Reason)
@@ -217,10 +192,8 @@ SELECT id, amount_kobo, state, account_id, outcome_reason
   FROM payments
  WHERE transaction_reference = $1`
 
-// describeExisting reconstructs the outcome of a reference already on file, so a
-// retry receives the same answer as the original request instead of a bare
-// conflict. Returning 200 with the original result is what makes a well-behaved
-// provider stop retrying.
+// describeExisting reconstructs a known reference's outcome, so a retry gets the
+// same answer as the original -- which is what makes a provider stop retrying.
 func (s *Store) describeExisting(ctx context.Context, tx pgx.Tx, n domain.Notification, now time.Time) (Result, error) {
 	var (
 		paymentID int64

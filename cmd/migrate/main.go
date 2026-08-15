@@ -1,10 +1,5 @@
-// Command migrate applies or rolls back database migrations.
-//
-// Migrations are embedded in the binary, so a reviewer needs no goose CLI:
-//
-//	go run ./cmd/migrate up
-//	go run ./cmd/migrate down
-//	go run ./cmd/migrate status
+// Command migrate applies or rolls back database migrations. They are embedded
+// in the binary, so no goose CLI is needed: `go run ./cmd/migrate up|down|status`.
 package main
 
 import (

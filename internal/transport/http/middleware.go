@@ -25,12 +25,11 @@ const (
 )
 
 const (
-	// maxBodyBytes caps an inbound payload. The real payload is a few hundred
-	// bytes; anything larger is a mistake or an attempt to exhaust memory.
+	// maxBodyBytes caps an inbound payload. The real one is a few hundred bytes;
+	// anything larger is a mistake or an attempt to exhaust memory.
 	maxBodyBytes = 16 << 10
-	// signatureWindow bounds how long a signed request stays valid. Without it a
-	// captured request could be replayed forever -- the signature alone proves
-	// authenticity, not freshness.
+	// signatureWindow bounds how long a signed request stays valid: a signature
+	// proves authenticity, not freshness.
 	signatureWindow = 5 * time.Minute
 
 	headerSignature = "X-Signature"
@@ -45,8 +44,7 @@ func requestIDFrom(ctx context.Context) string {
 }
 
 // rawBodyFrom returns the exact bytes received, which the store persists
-// verbatim. Keeping the original rather than a re-serialised struct is what
-// makes an incident replayable months later, after the parsing code has changed.
+// verbatim so an incident stays replayable after the parser has changed.
 func rawBodyFrom(ctx context.Context) []byte {
 	body, _ := ctx.Value(ctxRawBody).([]byte)
 	return body
@@ -83,9 +81,8 @@ func withLogging(logger *slog.Logger, next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		elapsed := time.Since(start)
 
-		// Successful payment traffic is 100k/minute; logging every one of those
-		// at info level costs more than the work itself and buries the events
-		// that matter. Failures are logged individually, throughput is a metric.
+		// At 100k/minute, logging every success costs more than the work and
+		// buries what matters. Failures are logged; throughput is a metric.
 		level := slog.LevelDebug
 		if rec.status >= 500 {
 			level = slog.LevelError
@@ -119,15 +116,8 @@ func withRecovery(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// withSignature authenticates the webhook.
-//
-// This endpoint reduces a customer's debt. Unauthenticated it is a "clear my
-// loan" button, so the signature is not optional hardening -- it is the control
-// that makes the endpoint safe to expose at all.
-//
-// Signature is hex(HMAC-SHA256(secret, timestamp + "." + body)). Binding the
-// timestamp into the signed material is what stops an attacker replaying a
-// captured request with a fresh timestamp header.
+// withSignature authenticates the webhook: hex(HMAC-SHA256(secret, ts+"."+body)).
+// The timestamp is signed too, so a captured request cannot be replayed.
 func withSignature(secret string, logger *slog.Logger, next http.Handler) http.Handler {
 	key := []byte(secret)
 
@@ -145,8 +135,8 @@ func withSignature(secret string, logger *slog.Logger, next http.Handler) http.H
 		}
 
 		reject := func(reason string) {
-			// Deliberately vague to the caller, specific in the log: telling a
-			// prober which half of the check failed helps only the prober.
+			// Vague to the caller, specific in the log: telling a prober which
+			// half of the check failed helps only the prober.
 			logger.Warn("signature rejected", "reason", reason, "request_id", requestIDFrom(r.Context()))
 			writeError(w, http.StatusUnauthorized, codeUnauthorised, "invalid or missing signature", "")
 		}
@@ -173,8 +163,8 @@ func withSignature(secret string, logger *slog.Logger, next http.Handler) http.H
 		mac.Write([]byte("."))
 		mac.Write(body)
 
-		// hmac.Equal, not bytes.Equal: a short-circuiting comparison leaks how
-		// much of a guessed signature was correct, one byte at a time.
+		// hmac.Equal, not bytes.Equal: a short-circuiting compare leaks how much
+		// of a guessed signature was right, one byte at a time.
 		if !hmac.Equal(provided, mac.Sum(nil)) {
 			reject("signature mismatch")
 			return

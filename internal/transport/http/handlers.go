@@ -44,8 +44,8 @@ type positionResponse struct {
 	NextDueWeek     int   `json:"next_due_week"`
 	PartPaidCurrent money `json:"part_paid_current"`
 
-	// Repayment health. The balance alone cannot tell a customer four weeks
-	// ahead from one four weeks behind, and only the second needs collections.
+	// Repayment health: the balance alone cannot tell someone four weeks ahead
+	// from four weeks behind, and only the second needs collections.
 	ExpectedToDate money `json:"expected_to_date"`
 	Arrears        money `json:"arrears"`
 	AheadBy        money `json:"ahead_by"`
@@ -115,9 +115,8 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Any other failure means we did not durably record the payment, so the
-		// provider must retry. 503 with Retry-After asks for exactly that;
-		// returning 500 invites some providers to give up on a real credit.
+		// We did not durably record it, so the provider must retry. 503 asks for
+		// that; a 500 invites some providers to give up on a real credit.
 		s.logger.Error("apply payment",
 			"error", err,
 			"reference", notification.Reference,
@@ -150,9 +149,8 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		response.Position = renderPosition(*result.Position)
 	}
 
-	// 202 for suspense: recorded and acknowledged, but deliberately not acted
-	// upon. Everything else is settled business, so the provider should stop
-	// retrying either way -- which is what a 2xx tells it.
+	// 202 for suspense: recorded and acknowledged, deliberately not acted upon.
+	// Either way a 2xx tells the provider to stop retrying.
 	status := http.StatusOK
 	if result.Outcome == postgres.OutcomeSuspense {
 		status = http.StatusAccepted
@@ -188,8 +186,8 @@ type ledgerEntryResponse struct {
 
 type ledgerResponse struct {
 	Entries []ledgerEntryResponse `json:"entries"`
-	// NextCursor is the `before` value for the following page, absent on the
-	// last page. Keyset paging, so page depth costs nothing.
+	// NextCursor is the `before` value for the next page, absent on the last.
+	// Keyset paging, so depth costs nothing.
 	NextCursor *int64 `json:"next_cursor,omitempty"`
 }
 
@@ -252,9 +250,8 @@ func (s *Server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// handleLive answers whether the process is running. It deliberately does not
-// touch the database: a database outage should drain this instance from the load
-// balancer, not have Kubernetes restart every replica in a loop.
+// handleLive answers whether the process is running, deliberately without
+// touching the database: an outage should drain replicas, not restart them all.
 func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

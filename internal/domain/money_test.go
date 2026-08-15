@@ -26,13 +26,13 @@ func TestParseNairaAmount(t *testing.T) {
 		{name: "not a number", in: "abc", err: ErrAmountMalformed},
 		{name: "thousands separators are ambiguous, not helpful", in: "10,000", err: ErrAmountMalformed},
 		{name: "currency symbol", in: "N10000", err: ErrAmountMalformed},
-		// Exponent notation would parse, but a payment amount written that way
-		// means the sender generated it wrong; interpreting it hides the bug.
+		// Parseable, but an amount written this way means the sender generated
+		// it wrong; interpreting it hides the bug.
 		{name: "exponent notation", in: "1e5", err: ErrAmountMalformed},
 		{name: "zero moves no money", in: "0", err: ErrAmountNotPositive},
 		{name: "zero with decimals", in: "0.00", err: ErrAmountNotPositive},
-		// A negative credit notification is a reversal, which travels a different
-		// path. Accepting it here would let a malformed payload increase a debt.
+		// A negative credit is a reversal and travels another path; accepting it
+		// here would let a malformed payload increase a debt.
 		{name: "negative", in: "-5000", err: ErrAmountNotPositive},
 		{name: "sub-kobo precision", in: "10.001", err: ErrAmountPrecision},
 		{name: "above the ceiling", in: "100000001", err: ErrAmountTooLarge},
@@ -82,11 +82,8 @@ func TestKoboString(t *testing.T) {
 	}
 }
 
-// FuzzParseNairaAmount asserts the parser is total: for any input it either
-// rejects cleanly or returns an amount inside the permitted range. It must never
-// panic and never yield a non-positive or oversized amount, because everything
-// downstream -- the CHECK constraints, the overflow-free running totals -- is
-// built on that guarantee holding at the boundary.
+// FuzzParseNairaAmount asserts the parser is total: any input either rejects
+// cleanly or yields an in-range amount. Everything downstream assumes that.
 func FuzzParseNairaAmount(f *testing.F) {
 	for _, seed := range []string{"10000", "0.01", "1000000.00", "", "-1", "abc", "1e5", "10.001", "999999999999"} {
 		f.Add(seed)

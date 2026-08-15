@@ -16,11 +16,8 @@ import (
 	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
-// These tests run against a real Postgres rather than a mock. A mock would
-// verify that we call the functions we wrote, which is not in doubt; what is in
-// doubt is whether the unique index, the CHECK constraints, the row locking and
-// the transaction boundaries behave as designed under concurrency. Only the
-// database can answer that.
+// Real Postgres, not a mock. What is in doubt is whether the unique index, the
+// constraints and the row locking hold under concurrency -- only the DB knows.
 
 const (
 	testPayable = domain.Kobo(100_000_000) // 1,000,000 naira
@@ -162,9 +159,8 @@ func TestIdempotencySequential(t *testing.T) {
 	assertReconciled(t, s, acct.ID)
 }
 
-// TestIdempotencyConcurrent is the test that a "SELECT then INSERT if absent"
-// implementation fails: the check and the write are not atomic, so simultaneous
-// deliveries both find nothing and both apply.
+// TestIdempotencyConcurrent is what a "SELECT then INSERT if absent" fails:
+// the check and the write are not atomic, so both deliveries find nothing.
 func TestIdempotencyConcurrent(t *testing.T) {
 	t.Parallel()
 
@@ -212,10 +208,8 @@ func TestIdempotencyConcurrent(t *testing.T) {
 	assertReconciled(t, s, acct.ID)
 }
 
-// TestConcurrentDistinctPaymentsDoNotLoseUpdates is the lost-update test. A
-// read-modify-write in application code passes every sequential test and fails
-// this one: two payments read the same balance and the second overwrites the
-// first's increment.
+// TestConcurrentDistinctPaymentsDoNotLoseUpdates is the lost-update test: a
+// read-modify-write passes every sequential test and fails this one.
 func TestConcurrentDistinctPaymentsDoNotLoseUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -386,10 +380,7 @@ func TestOverpaymentSettlesAndBanksExcess(t *testing.T) {
 }
 
 // TestSQLAllocationMatchesDomain guards the one duplication in this design: the
-// allocation rule is expressed both in domain.Allocate (tested exhaustively,
-// with no database) and in applyPaymentSQL (fast, atomic, no read-modify-write).
-// Keeping both is a deliberate trade -- but only if they cannot silently drift,
-// which is what this test enforces.
+// allocation rule lives in both Go and SQL, and must not silently drift.
 func TestSQLAllocationMatchesDomain(t *testing.T) {
 	t.Parallel()
 
@@ -535,13 +526,8 @@ func TestLedgerKeysetPagination(t *testing.T) {
 	}
 }
 
-// TestLedgerIncludesEntriesWithoutAPayment is a regression test.
-//
-// Opening balances, adjustments and write-offs have no originating payment, so
-// an inner join against payments drops them from the statement. The balance
-// still moves, the ledger still holds the entry, and the customer's statement
-// silently stops adding up -- the failure is invisible until someone disputes a
-// figure. The statement must sum to the balance it explains.
+// TestLedgerIncludesEntriesWithoutAPayment is a regression test: an inner join
+// dropped opening balances, so statements stopped summing to the balance.
 func TestLedgerIncludesEntriesWithoutAPayment(t *testing.T) {
 	t.Parallel()
 
@@ -616,9 +602,8 @@ func TestPositionForUnknownCustomer(t *testing.T) {
 	}
 }
 
-// assertReconciled asserts invariant 2: the materialised balance equals the sum
-// of the ledger. Every test that moves money checks it, because a balance that
-// has drifted from its ledger is the failure this whole design exists to prevent.
+// assertReconciled checks the balance equals the sum of the ledger. Every test
+// that moves money runs it: drift is the failure this design exists to prevent.
 func assertReconciled(t *testing.T, s *Store, accountID uuid.UUID) {
 	t.Helper()
 

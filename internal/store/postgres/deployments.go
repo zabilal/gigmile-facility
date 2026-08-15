@@ -13,10 +13,7 @@ import (
 )
 
 // ErrAlreadyDeployed means the customer already holds an active deployment.
-//
-// Surfaced from the database's partial unique index rather than from a prior
-// existence check, so it holds under concurrency: two simultaneous deployments
-// for one customer cannot both win a race that the index refuses to allow.
+// Surfaced from the partial unique index, so it holds under concurrency.
 var ErrAlreadyDeployed = errors.New("customer already has an active deployment")
 
 // Deployment describes an asset handed to a customer.
@@ -26,11 +23,8 @@ type Deployment struct {
 	TotalPayable domain.Kobo
 	TermWeeks    int
 	StartDate    time.Time
-	// PriorPaid carries repayment already made before this record existed --
-	// a deployment onboarded from another system, or a seeded book. It is posted
-	// as an ADJUSTMENT ledger entry rather than written straight to the balance,
-	// because a balance that is not the sum of its ledger is exactly the drift
-	// this design exists to prevent.
+	// PriorPaid is repayment made before this record existed. Posted as an
+	// ADJUSTMENT entry, never written straight to the balance.
 	PriorPaid domain.Kobo
 }
 
@@ -44,11 +38,8 @@ const insertOpeningBalanceSQL = `
 INSERT INTO ledger_entries (account_id, payment_id, entry_type, amount_kobo, balance_after_kobo)
 VALUES ($1, NULL, 'ADJUSTMENT', $2, $3)`
 
-// Deploy creates an active deployment for a customer.
-//
-// Origination proper -- credit decisioning, asset allocation, contract terms --
-// belongs to another service. This exists so the seeder and the tests can create
-// the state the payment path operates on, and it is not exposed over HTTP.
+// Deploy creates an active deployment. Origination proper belongs to another
+// service; this exists so the seeder and tests can create state, and is unexposed.
 func (s *Store) Deploy(ctx context.Context, d Deployment) (domain.Account, error) {
 	weekly, err := domain.WeeklyDue(d.TotalPayable, d.TermWeeks)
 	if err != nil {
@@ -74,10 +65,8 @@ func (s *Store) Deploy(ctx context.Context, d Deployment) (domain.Account, error
 		return domain.Account{}, fmt.Errorf("create deployment: %w", err)
 	}
 
-	// The opening balance goes through the ledger like everything else. Writing
-	// it straight to total_paid_kobo would create a balance with no entry
-	// explaining it -- the projection would no longer be derivable from the
-	// ledger, which is the one invariant this design is built around.
+	// Through the ledger like everything else: a balance with no entry
+	// explaining it would stop being derivable from the ledger.
 	if d.PriorPaid > 0 {
 		if _, err := tx.Exec(ctx, insertOpeningBalanceSQL,
 			acct.ID, int64(d.PriorPaid), int64(d.TotalPayable-d.PriorPaid)); err != nil {
@@ -91,16 +80,8 @@ func (s *Store) Deploy(ctx context.Context, d Deployment) (domain.Account, error
 	return acct, nil
 }
 
-// BulkDeploy inserts deployments using the Postgres COPY protocol.
-//
-// COPY rather than a loop of INSERTs because seeding the load test needs ~100k
-// accounts: a per-row round trip makes that minutes of waiting, while COPY
-// streams it in seconds. The seeded cardinality is what makes the load test
-// meaningful -- fire 100k payments/minute at ten accounts and the benchmark
-// measures row-lock contention rather than the system.
-//
-// Accounts and their opening-balance entries are copied in one transaction, so a
-// failed seed cannot leave balances without the ledger that justifies them.
+// BulkDeploy inserts over COPY, since seeding needs ~100k accounts. Accounts and
+// opening entries copy in one transaction, so balances never outlive their ledger.
 func (s *Store) BulkDeploy(ctx context.Context, deployments []Deployment) (int64, error) {
 	accountRows := make([][]any, 0, len(deployments))
 	ledgerRows := make([][]any, 0, len(deployments))

@@ -17,11 +17,8 @@ import (
 	transport "github.com/zabilal/gigmile-facility/internal/transport/http"
 )
 
-// shutdownGrace bounds how long in-flight work has to finish on shutdown.
-//
-// It matters more here than in most services: a payment that has been
-// acknowledged but whose transaction has not committed is a credit the provider
-// believes it delivered and we have no record of. Draining beats a fast exit.
+// shutdownGrace bounds in-flight work on shutdown. An acknowledged but
+// uncommitted payment is a credit the provider thinks it delivered.
 const shutdownGrace = 20 * time.Second
 
 func main() {
@@ -76,14 +73,14 @@ func run() error {
 		logger.Info("shutdown signal received, draining", "grace", shutdownGrace)
 	}
 
-	// A fresh context: the signal already cancelled the one above, and shutdown
-	// needs its own budget to finish work rather than inheriting a dead deadline.
+	// A fresh context: the signal cancelled the one above, and shutdown needs
+	// its own budget rather than a dead deadline.
 	drainCtx, cancelDrain := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancelDrain()
 
 	if err := server.Shutdown(drainCtx); err != nil {
-		// Forced close: some in-flight requests were cut off. Worth an error log,
-		// because each one may be an acknowledged payment we did not record.
+		// Forced close cut off in-flight requests, each possibly an
+		// acknowledged payment we did not record.
 		logger.Error("graceful shutdown timed out; forcing close", "error", err)
 		_ = server.Close()
 		return err

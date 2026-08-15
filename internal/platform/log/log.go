@@ -7,11 +7,8 @@ import (
 	"strings"
 )
 
-// New returns a JSON structured logger at the requested level.
-//
-// JSON rather than text because these lines are read by a log aggregator far
-// more often than by a person, and a payment incident is investigated by
-// querying for a transaction_reference rather than by scrolling.
+// New returns a JSON structured logger. JSON because an incident is
+// investigated by querying for a transaction_reference, not by scrolling.
 func New(level string) *slog.Logger {
 	var lvl slog.Level
 	switch strings.ToLower(level) {

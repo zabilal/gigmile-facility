@@ -1,17 +1,5 @@
-// Command loadgen drives the payment webhook at a target rate and reports
-// latency distribution.
-//
-// The brief's headline constraint is 100,000 payment notifications per minute.
-// Asserting a system handles that is cheap; measuring it is the point. This
-// lives in the repo rather than depending on k6 so the whole thing runs with
-// nothing but Go and Docker, which the reviewer already needs.
-//
-// Latency is measured from each request's *scheduled* send time, not from when
-// a worker got around to it. Measuring from the actual send hides coordinated
-// omission: once the system falls behind, requests queue up in the generator and
-// every one of them reports a fast service time while the real client waits.
-//
-//	go run ./cmd/loadgen -rate=100000 -duration=60s
+// Command loadgen drives the webhook at a target rate and reports latency, timed
+// from each request's scheduled send so coordinated omission cannot hide.
 package main
 
 import (
@@ -35,7 +23,7 @@ import (
 )
 
 type sample struct {
-	scheduled time.Duration // queue wait + service: what a real caller experiences
+	scheduled time.Duration // queue wait + service: what a caller experiences
 	service   time.Duration // time on the wire alone
 	status    int
 	err       bool
@@ -72,8 +60,8 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "duration    %s (%d requests)\n", *duration, planned)
 	fmt.Fprintf(os.Stderr, "book        %d customers\n\n", *customers)
 
-	// A shared transport with a generous idle pool: without it the generator
-	// spends its time in TCP handshakes and measures its own connection churn.
+	// A generous idle pool: without it the generator spends its time in TCP
+	// handshakes and measures its own connection churn.
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
@@ -127,20 +115,8 @@ func run() error {
 		}(uint64(w) + 1)
 	}
 
-	// Open-loop generator: requests are scheduled on a fixed cadence regardless
-	// of whether earlier ones have finished, which is how a bank's webhook
-	// traffic actually arrives.
-	//
-	// Pacing is batched rather than one tick per request. At 1,667/sec the
-	// interval is 600us, well below the ~1ms timer granularity of a typical
-	// host, so a per-request ticker fires late and bursty -- and since latency
-	// is measured from the ideal schedule, that jitter would be charged to the
-	// server. Ticking every 5ms and releasing the requests due in that window
-	// keeps the aggregate rate exact and the measurement honest.
-	//
-	// The channel send blocks when workers fall behind. That is deliberate: the
-	// backlog then shows up in scheduled latency, which is exactly the signal
-	// that the system is not keeping up.
+	// Open loop, batched: at 1,667/sec the interval is below host timer
+	// granularity, so a per-request ticker's jitter lands on the server.
 	const tickInterval = 5 * time.Millisecond
 	perTick := float64(*ratePerMin) / 60 * tickInterval.Seconds()
 
@@ -222,12 +198,8 @@ func postPayment(ctx context.Context, client *http.Client, target, secret string
 	}
 	defer resp.Body.Close()
 
-	// Drain the body FULLY. net/http only returns a connection to the idle pool
-	// once the body is read to EOF; a partial read silently closes it instead.
-	// A payment response carrying a position is larger than any fixed-size peek,
-	// so peeking meant every request opened a new connection, and a sustained
-	// run exhausted the host's ephemeral ports -- which looks exactly like the
-	// server failing under load, and is not.
+	// Drain FULLY: net/http only reuses a connection once the body hits EOF. A
+	// partial read exhausted ephemeral ports and looked like server failure.
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return resp.StatusCode, nil

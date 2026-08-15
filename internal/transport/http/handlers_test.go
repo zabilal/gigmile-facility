@@ -152,7 +152,7 @@ func TestPaymentEndpointAppliesAndReportsPosition(t *testing.T) {
 }
 
 // TestSignatureIsRequired covers the control that makes this endpoint safe to
-// expose at all: without it, anyone who can reach the service can clear a debt.
+// expose: without it, anyone who can reach the service can clear a debt.
 func TestSignatureIsRequired(t *testing.T) {
 	t.Parallel()
 
@@ -173,8 +173,8 @@ func TestSignatureIsRequired(t *testing.T) {
 			r.Header.Set(headerSignature, sign(t, "attacker-guess", ts, body))
 		}},
 		{
-			// Signed correctly, but for a different body: the classic tampering
-			// attempt, raising the amount after signing.
+			// Signed correctly but for a different body: raising the amount
+			// after signing, the classic tampering attempt.
 			name: "body tampered after signing",
 			mutate: func(r *http.Request) {
 				tampered := payload(customer, "REF-"+uuid.NewString(), "999999")
@@ -269,8 +269,8 @@ func TestPaymentEndpointIdempotency(t *testing.T) {
 		t.Fatalf("first outcome = %q, want applied", first.Outcome)
 	}
 
-	// A retried delivery must return 200 with the original result, not a 409.
-	// A conflict status makes well-behaved providers keep retrying forever.
+	// A retry must return 200 with the original result: a 409 makes
+	// well-behaved providers keep retrying forever.
 	resp := post(t, srv, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("retry status = %d, want 200", resp.StatusCode)
@@ -308,8 +308,7 @@ func TestPaymentEndpointAmountMismatchConflicts(t *testing.T) {
 }
 
 // TestUnmatchedPaymentIsAcceptedNotRejected: the money arrived. Refusing it
-// because we cannot map it would make the provider retry forever and would put
-// a real credit at risk of being dropped.
+// because we cannot map it puts a real credit at risk of being dropped.
 func TestUnmatchedPaymentIsAcceptedNotRejected(t *testing.T) {
 	t.Parallel()
 

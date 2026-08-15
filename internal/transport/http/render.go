@@ -8,11 +8,8 @@ import (
 	"github.com/zabilal/gigmile-facility/internal/domain"
 )
 
-// money renders an amount in both representations on purpose.
-//
-// Kobo is authoritative and is what a client should compute with; naira is for
-// humans reading a response. Emitting only a formatted string invites clients to
-// parse it back into a float, which is how money becomes wrong.
+// money renders both representations on purpose: kobo is authoritative, naira
+// is for humans. A formatted string alone invites clients to parse it as float.
 type money struct {
 	Kobo  int64  `json:"kobo"`
 	Naira string `json:"naira"`
@@ -22,8 +19,8 @@ func amount(k domain.Kobo) money {
 	return money{Kobo: int64(k), Naira: k.String()}
 }
 
-// errorCode is a stable, machine-readable classification. Clients switch on
-// this; the message is for humans and may be reworded without notice.
+// errorCode is a stable, machine-readable classification that clients switch
+// on; the message is for humans and may be reworded without notice.
 type errorCode string
 
 const (
@@ -51,8 +48,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(body); err != nil {
-		// The status line is already sent, so this cannot be turned into a 500.
-		// Logging it is all that remains.
+		// The status line is already sent, so this cannot become a 500.
 		slog.Error("write response body", "error", err)
 	}
 }

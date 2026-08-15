@@ -40,9 +40,8 @@ func TestParseNotification(t *testing.T) {
 		t.Errorf("Status = %q", got.Status)
 	}
 
-	// The payload carries no zone; it is read as WAT, so 14:54:16 in Lagos is
-	// 13:54:16 UTC. Getting this wrong shifts payments across week boundaries
-	// and mislabels customers as delinquent.
+	// No zone in the payload, so it is read as WAT: 14:54:16 Lagos is 13:54:16
+	// UTC. Getting this wrong shifts payments across week boundaries.
 	wantUTC := time.Date(2025, 11, 7, 13, 54, 16, 0, time.UTC)
 	if !got.TransactionAt.UTC().Equal(wantUTC) {
 		t.Errorf("TransactionAt = %s, want %s", got.TransactionAt.UTC(), wantUTC)

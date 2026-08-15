@@ -1,17 +1,5 @@
-// Command seed populates the deployment book.
-//
-// The brief assumes customers and deployments already exist; on a fresh clone
-// they do not. Origination belongs to another bounded context, so rather than
-// building management endpoints this service has no business owning, a seeder
-// stands in for that upstream.
-//
-// It is also load-test infrastructure, not a convenience. The design claims
-// contention is negligible because payments spread across many customers. Fire
-// 100k payments a minute at ten accounts and the benchmark measures row-lock
-// contention rather than the system, so the seeded cardinality is what makes the
-// throughput number mean anything.
-//
-//	go run ./cmd/seed -count=100000 -reset
+// Command seed populates the deployment book, standing in for the origination
+// service. Load-test infrastructure: ten accounts would measure only contention.
 package main
 
 import (
@@ -60,8 +48,7 @@ func run() error {
 	defer store.Close()
 
 	if *reset {
-		// -reset against a real environment would destroy the ledger. The flag
-		// is only meaningful for a local database, so refuse anywhere else
+		// -reset would destroy a real ledger, so refuse anywhere but local
 		// rather than trusting whoever typed the command.
 		if cfg.Environment != "development" {
 			return fmt.Errorf("-reset refused in environment %q", cfg.Environment)
@@ -94,9 +81,8 @@ func run() error {
 				TermWeeks:    *term,
 			}
 
-			// Stagger the book across the term so positions vary. A book where
-			// every account was deployed today makes every position identical
-			// and hides every bug in the arrears arithmetic.
+			// Stagger across the term so positions vary: a book deployed all
+			// today makes every position identical and hides arrears bugs.
 			weeksIn := i % *term
 			d.StartDate = today.AddDate(0, 0, -weeksIn*domain.DaysPerWeek)
 			d.PriorPaid = seededPaid(i, weekly, weeksIn, totalPayable)
@@ -121,21 +107,12 @@ func run() error {
 	return nil
 }
 
-// headroomWeeks is how much of the obligation is left unpaid on every seeded
-// account, so a load test does not start completing them and drifting into the
-// suspense path -- which would measure something other than the steady-state
-// write cost.
-//
-// Two weeks is ample: a one-minute run at 100k payments/minute spreads roughly
-// two payments over each of 100k accounts. An earlier draft reserved half the
-// obligation, which was not conservative but wrong -- it clipped every account
-// past week 25, so the on-schedule cohort rendered as delinquent and the seeded
-// book misrepresented the very spread it exists to provide.
+// headroomWeeks keeps seeded accounts short of completion so a load test measures
+// steady-state writes. Two weeks is ample: a run spreads ~2 payments per account.
 const headroomWeeks = 2
 
-// seededPaid gives the book a realistic spread of repayment health: mostly on
-// schedule, some in arrears, some prepaid, some deployed but not yet paying.
-// Deterministic rather than random, so a seeded database is reproducible.
+// seededPaid spreads repayment health realistically: mostly on schedule, some
+// in arrears, some prepaid. Deterministic, so a seeded database is reproducible.
 func seededPaid(i int, weekly domain.Kobo, weeksIn int, totalPayable domain.Kobo) domain.Kobo {
 	onSchedule := weekly * domain.Kobo(weeksIn)
 

@@ -9,18 +9,15 @@ import (
 	"github.com/zabilal/gigmile-facility/internal/store/postgres"
 )
 
-// Metrics are labelled by the matched route pattern rather than the raw path.
-// Using the path would put every customer id into a label value and produce one
-// time series per customer, which is how a metrics backend gets taken down by
-// the service it monitors.
+// Labelled by route pattern, never the raw path: a customer id in a label value
+// means one time series per customer, which takes the metrics backend down.
 var (
 	requestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "facility_http_request_duration_seconds",
 			Help: "Request latency by route and status.",
-			// Buckets are tight at the low end because the interesting question
-			// is whether a payment commits in single-digit milliseconds, not
-			// whether it takes 5 or 10 seconds.
+			// Tight at the low end: the question is whether a payment commits
+			// in single-digit milliseconds, not whether it takes 5 or 10s.
 			Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5},
 		},
 		[]string{"route", "status"},
@@ -34,9 +31,8 @@ var (
 		[]string{"outcome"},
 	)
 
-	// A sustained non-zero rate here means a provider defect or someone probing
-	// whether replaying a reference with a larger amount clears a debt. It should
-	// alert, not sit in a dashboard.
+	// A sustained non-zero rate is a provider defect or someone probing whether
+	// a replayed reference clears a debt. It should alert, not sit on a board.
 	referenceAnomalies = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "facility_reference_anomalies_total",

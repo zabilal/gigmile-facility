@@ -72,10 +72,8 @@ func TestWeeklyDue(t *testing.T) {
 	}
 }
 
-// TestInstalmentsSumToObligation is the property that makes the rounding rule
-// safe: whatever the term, the instalments must add up to exactly the amount
-// owed. A floor that loses the remainder would quietly forgive debt; a ceiling
-// would overcharge. Neither is acceptable, so the final week absorbs it.
+// TestInstalmentsSumToObligation makes the rounding rule safe: a lost remainder
+// would forgive debt, a ceiling would overcharge, so the final week absorbs it.
 func TestInstalmentsSumToObligation(t *testing.T) {
 	t.Parallel()
 
@@ -100,8 +98,8 @@ func TestInstalmentsSumToObligation(t *testing.T) {
 			if final <= 0 {
 				t.Errorf("payable=%d term=%d: final instalment %d must be positive", payable, term, final)
 			}
-			// The remainder lands in the final week, so it is never smaller than
-			// a regular week -- a customer is never asked for a token last payment.
+			// The final week holds the remainder, so it is never smaller than a
+			// regular week -- nobody is billed a token last payment.
 			if term > 1 && final < weekly {
 				t.Errorf("payable=%d term=%d: final %d < weekly %d", payable, term, final, weekly)
 			}
@@ -181,9 +179,8 @@ func TestAllocate(t *testing.T) {
 		{name: "zero amount", account: testAccount(0), amount: 0, err: ErrAmountNotPositive},
 		{name: "negative amount", account: testAccount(0), amount: -1, err: ErrAmountNotPositive},
 		{
-			// Routed to suspense by the caller rather than absorbed: with one
-			// deployment at a time there is nothing for it to pay down, and
-			// silently banking it would hide a real operational problem.
+			// Suspense, not absorbed: with one deployment at a time there is
+			// nothing to pay down, and banking it would hide an ops problem.
 			name:    "already completed",
 			account: func() Account { a := testAccount(100_000_000); a.Status = StatusCompleted; return a }(),
 			amount:  2_000_000,
@@ -218,9 +215,8 @@ func TestAllocate(t *testing.T) {
 	}
 }
 
-// TestAllocateRemainderTerm exercises the branch where the final instalment
-// carries a rounding remainder: every earlier week is settled but the obligation
-// is not yet discharged, so the account must not report itself complete.
+// TestAllocateRemainderTerm covers the final instalment carrying a remainder:
+// every earlier week is settled, but the account must not report itself complete.
 func TestAllocateRemainderTerm(t *testing.T) {
 	t.Parallel()
 
@@ -360,9 +356,8 @@ func TestPositionAt(t *testing.T) {
 	}
 }
 
-// TestAllocateOrderIndependence is the property that makes out-of-order arrival
-// a non-issue: bank notifications are not guaranteed to arrive in the order the
-// transfers settled, so the final balance must not depend on it.
+// TestAllocateOrderIndependence makes out-of-order arrival a non-issue: bank
+// notifications do not arrive in settlement order, so the balance must not care.
 func TestAllocateOrderIndependence(t *testing.T) {
 	t.Parallel()
 
@@ -391,12 +386,8 @@ func TestAllocateOrderIndependence(t *testing.T) {
 	}
 }
 
-// TestOverpaymentDependsOnArrivalOrder documents a real asymmetry rather than an
-// oversight. Excess only materialises in the payment that settles the account;
-// a payment arriving afterwards finds no active deployment and is rejected here,
-// to be routed to suspense by the caller. Both outcomes are correct, and both
-// keep the money accounted for -- but they are different rows, so the test
-// pins the behaviour down.
+// TestOverpaymentDependsOnArrivalOrder documents a real asymmetry, not an
+// oversight: excess only materialises in the payment that settles the account.
 func TestOverpaymentDependsOnArrivalOrder(t *testing.T) {
 	t.Parallel()
 

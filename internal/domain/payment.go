@@ -29,27 +29,24 @@ const (
 	DispositionApply Disposition = "APPLY"
 	// DispositionIgnore records the notification without touching the ledger.
 	DispositionIgnore Disposition = "IGNORE"
-	// DispositionReview records it and routes to ops. Used wherever applying or
-	// discarding would both be a guess.
+	// DispositionReview records it and routes to ops, for anything where
+	// applying or discarding would both be a guess.
 	DispositionReview Disposition = "REVIEW"
 )
 
-// WAT is West Africa Time.
-//
-// A fixed offset rather than a tzdata lookup: Nigeria is permanently UTC+1 with
-// no daylight saving, and a fixed zone keeps the binary correct in a scratch
-// container that ships no timezone database.
+// WAT is West Africa Time. A fixed offset rather than a tzdata lookup: Nigeria
+// has no daylight saving, and this stays correct in a scratch container.
 var WAT = time.FixedZone("WAT", 1*60*60)
 
 // TransactionDateLayout is the payload's timestamp format. It carries no zone,
-// so it is read as WAT -- see ParseNotification.
+// so it is read as WAT.
 const TransactionDateLayout = "2006-01-02 15:04:05"
 
 const (
 	maxReferenceLen  = 128
 	maxCustomerIDLen = 64
-	// futureSkewTolerance accepts modest clock drift at the provider while still
-	// rejecting a timestamp that is obviously wrong.
+	// futureSkewTolerance accepts provider clock drift while still rejecting a
+	// timestamp that is obviously wrong.
 	futureSkewTolerance = 24 * time.Hour
 	// maxBackdating rejects timestamps too old to be a live notification.
 	maxBackdating = 10 * 365 * 24 * time.Hour
@@ -58,8 +55,8 @@ const (
 // ErrUnknownStatus means the provider sent a payment_status we do not model.
 var ErrUnknownStatus = errors.New("unrecognised payment_status")
 
-// ValidationError identifies which field of the payload was rejected, so the
-// transport layer can return something more useful than "bad request".
+// ValidationError names the rejected field, so the transport layer can return
+// something more useful than "bad request".
 type ValidationError struct {
 	Field string
 	Err   error
@@ -68,9 +65,8 @@ type ValidationError struct {
 func (e ValidationError) Error() string { return fmt.Sprintf("%s: %v", e.Field, e.Err) }
 func (e ValidationError) Unwrap() error { return e.Err }
 
-// NotificationInput is the payload exactly as it arrives: every field a string,
-// nothing coerced. Parsing lives in the domain rather than in the HTTP handler
-// so the rules are testable without a server and identical across transports.
+// NotificationInput is the payload as it arrives: every field a string, nothing
+// coerced. Parsing lives here, not in the handler, so it is testable standalone.
 type NotificationInput struct {
 	CustomerID           string `json:"customer_id"`
 	PaymentStatus        string `json:"payment_status"`
@@ -88,10 +84,8 @@ type Notification struct {
 	TransactionAt time.Time
 }
 
-// ParseNotification validates and converts an inbound payload.
-//
-// now is passed in so that the timestamp sanity window is testable rather than
-// dependent on the wall clock.
+// ParseNotification validates and converts an inbound payload. now is passed in
+// so the timestamp sanity window does not depend on the wall clock.
 func ParseNotification(in NotificationInput, now time.Time) (Notification, error) {
 	ref := strings.TrimSpace(in.TransactionReference)
 	switch {
@@ -115,9 +109,7 @@ func ParseNotification(in NotificationInput, now time.Time) (Notification, error
 	}
 
 	// The payload carries no timezone. Reading it as WAT is an assumption, and a
-	// wrong guess here shifts a payment across a week boundary and mislabels a
-	// customer as delinquent -- so it is stated explicitly rather than defaulted
-	// to UTC by accident.
+	// wrong guess shifts a payment across a week boundary into false arrears.
 	txAt, err := time.ParseInLocation(TransactionDateLayout, strings.TrimSpace(in.TransactionDate), WAT)
 	if err != nil {
 		return Notification{}, ValidationError{"transaction_date", fmt.Errorf("must match %q", TransactionDateLayout)}
@@ -143,25 +135,19 @@ func ParseNotification(in NotificationInput, now time.Time) (Notification, error
 	}, nil
 }
 
-// Disposition decides what happens to the notification.
-//
-// An unrecognised status is routed for review, never ignored. Ignoring an
-// unknown status silently discards money on the assumption that it was not a
-// real credit; the cost of a human glancing at a queue is far below the cost of
-// a customer's repayment vanishing because a provider added a status we had not
-// seen before.
+// Disposition decides what happens to the notification. An unknown status is
+// reviewed, never ignored: a queue costs less than a vanished repayment.
 func (n Notification) Disposition() Disposition {
 	switch n.Status {
 	case PaymentComplete:
 		return DispositionApply
 	case PaymentPending, PaymentFailed:
-		// Nothing settled, so nothing to apply. Recorded for audit: the matching
-		// COMPLETE will arrive under the same reference and be applied then.
+		// Nothing settled. The matching COMPLETE arrives under the same
+		// reference and is applied then.
 		return DispositionIgnore
 	case PaymentReversed:
-		// A reversal must unwind a specific prior entry, but the payload carries
-		// only one reference and no link to the original. Guessing which entry to
-		// compensate is how a ledger silently loses integrity.
+		// The payload carries one reference and no link to the original entry,
+		// and guessing which to compensate is how a ledger loses integrity.
 		return DispositionReview
 	default:
 		return DispositionReview
