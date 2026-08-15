@@ -1,5 +1,4 @@
 bin/
-.env
 *.out
 coverage.html
 loadtest/results/
@@ -7,3 +6,5 @@ loadtest/results/
 .claude/
 data.md
 APPROACH.md
+config.bat
+node_modules
